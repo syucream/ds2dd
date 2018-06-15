@@ -14,8 +14,10 @@ type prop struct {
 	Repr []string `datastore:"property_representation"`
 }
 
+type propertyTypes map[string]map[string][]string
+
 // getProperties returns map[table name][column name] = [<type1>, <type2>] from Datastore properties.
-func getProperties(ctx context.Context, client datastore.Client) map[string]map[string][]string {
+func getPropertyTypes(ctx context.Context, client datastore.Client) propertyTypes {
 	query := client.NewQuery("__property__")
 
 	var props []prop
@@ -30,19 +32,19 @@ func getProperties(ctx context.Context, client datastore.Client) map[string]map[
 		log.Fatalf("Invalid result: props %d values, keys %d values.", propNum, keyNum)
 	}
 
-	properties := make(map[string]map[string][]string)
+	properties := make(propertyTypes)
 	for i := 0; i < propNum; i++ {
 		k := keys[i]
 		repr := props[i].Repr
 
 		name := k.Name()
-		startOfColumn := strings.LastIndex(name, ".")
+		startOfColumn := strings.Index(name, ".")
 		if startOfColumn == -1 {
 			continue // skip it
 		}
 
 		tableName := name[:startOfColumn]
-		colName := name[startOfColumn+1:]
+		colName := strings.Replace(name[startOfColumn+1:], ".", "__", -1)
 
 		if properties[tableName] == nil {
 			properties[tableName] = make(map[string][]string)
@@ -52,6 +54,24 @@ func getProperties(ctx context.Context, client datastore.Client) map[string]map[
 	}
 
 	return properties
+}
+
+func format(t propertyTypes) string {
+	var sqlStr string
+
+	for tableName, cols := range t {
+		var columns []string
+		for colName, colTypes := range cols {
+			// FIXME check an available type
+			t := colTypes[0]
+
+			columns = append(columns, fmt.Sprintf("%s %s", colName, t))
+		}
+
+		sqlStr += fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s ( %s );\n", tableName, strings.Join(columns, ","))
+	}
+
+	return sqlStr
 }
 
 func main() {
@@ -65,7 +85,7 @@ func main() {
 	}
 	defer client.Close()
 
-	properties := getProperties(ctx, client)
-
-	fmt.Println(properties)
+	properties := getPropertyTypes(ctx, client)
+	sqlStr := format(properties)
+	fmt.Println(sqlStr)
 }
