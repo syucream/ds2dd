@@ -13,3 +13,7 @@
 
 # dep
 vendor
+
+# dist
+ds2dd
+dist
