@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"go.mercari.io/datastore"
@@ -14,9 +15,10 @@ type prop struct {
 	Repr []string `datastore:"property_representation"`
 }
 
+// represents map[table name][column name] = [<type1>, <type2>, ...]
 type propertyTypes map[string]map[string][]string
 
-// getProperties returns map[table name][column name] = [<type1>, <type2>] from Datastore properties.
+// getProperties returns table/column/types from actual Datastore properties.
 func getPropertyTypes(ctx context.Context, client datastore.Client) propertyTypes {
 	query := client.NewQuery("__property__")
 
@@ -37,14 +39,8 @@ func getPropertyTypes(ctx context.Context, client datastore.Client) propertyType
 		k := keys[i]
 		repr := props[i].Repr
 
-		name := k.Name()
-		startOfColumn := strings.Index(name, ".")
-		if startOfColumn == -1 {
-			continue // skip it
-		}
-
-		tableName := name[:startOfColumn]
-		colName := strings.Replace(name[startOfColumn+1:], ".", "__", -1)
+		tableName := k.ParentKey().Name()
+		colName := strings.Replace(k.Name(), ".", "_", -1)
 
 		if properties[tableName] == nil {
 			properties[tableName] = make(map[string][]string)
@@ -62,16 +58,37 @@ func format(t propertyTypes) string {
 	for tableName, cols := range t {
 		var columns []string
 		for colName, colTypes := range cols {
-			// FIXME check an available type
-			t := colTypes[0]
+			if len(colTypes) > 1 {
+				fmt.Fprintf(os.Stderr, "Type of %s is ambiguous. A first value is selected. : acceptable types are %v\n", colName, colTypes)
+			}
 
+			t := propRepr2mysqlType(colTypes[0])
 			columns = append(columns, fmt.Sprintf("%s %s", colName, t))
 		}
 
-		sqlStr += fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s ( %s );\n", tableName, strings.Join(columns, ","))
+		sqlStr += fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s ( \n  %s \n);\n", tableName, strings.Join(columns, ",\n  "))
 	}
 
 	return sqlStr
+}
+
+// Convert property_representation to MySQL type.
+// See detail about the repr on https://cloud.google.com/datastore/docs/concepts/metadataqueries#property_queries_property_representations
+func propRepr2mysqlType(propRepr string) string {
+	switch propRepr {
+	case "INT64":
+		return "BIGINT"
+	case "DOUBLE":
+		return "DOUBLE"
+	case "BOOLEAN":
+		return "BOOLEAN"
+	case "STRING":
+		return "VARCHAR(255)"
+	default:
+		fmt.Fprintf(os.Stderr, "Non convertable type : %s\n", propRepr)
+		os.Exit(-1)
+	}
+	return ""
 }
 
 func main() {
@@ -87,5 +104,6 @@ func main() {
 
 	properties := getPropertyTypes(ctx, client)
 	sqlStr := format(properties)
+
 	fmt.Println(sqlStr)
 }
