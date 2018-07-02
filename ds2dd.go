@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	"go.mercari.io/datastore"
@@ -56,10 +57,22 @@ func format(t propertyTypes) string {
 	var sqlStr string
 
 	for tableName, cols := range t {
+		colNames := make([]string, 0, len(cols))
+		for n, _ := range cols {
+			colNames = append(colNames, n)
+		}
+		sort.Strings(colNames)
+
 		var columns []string
-		for colName, colTypes := range cols {
+		for _, colName := range colNames {
+			colTypes, ok := cols[colName]
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Unknown column entry. colName : %s\n", colName)
+				continue
+			}
 			if len(colTypes) > 1 {
 				fmt.Fprintf(os.Stderr, "Type of %s is ambiguous. A first value is selected. : acceptable types are %v\n", colName, colTypes)
+				continue
 			}
 
 			t := propRepr2mysqlType(colTypes[0])
