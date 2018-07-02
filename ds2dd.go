@@ -58,7 +58,19 @@ func getPropertyTypes(ctx context.Context, client datastore.Client) propertyType
 func format(t propertyTypes) string {
 	var sqlStr string
 
-	for tableName, cols := range t {
+	tableNames := make([]string, 0, len(t))
+	for n, _ := range t {
+		tableNames = append(tableNames, n)
+	}
+	sort.Strings(tableNames)
+
+	for _, tableName := range tableNames {
+		cols, tableOk := t[tableName]
+		if !tableOk {
+			fmt.Fprintf(os.Stderr, "Unknown table entry. key name : %s\n", tableName)
+			continue
+		}
+
 		colNames := make([]string, 0, len(cols))
 		for n, _ := range cols {
 			colNames = append(colNames, n)
@@ -67,9 +79,9 @@ func format(t propertyTypes) string {
 
 		var columns []string
 		for _, colName := range colNames {
-			colTypes, ok := cols[colName]
-			if !ok {
-				fmt.Fprintf(os.Stderr, "Unknown column entry. colName : %s\n", colName)
+			colTypes, columnOk := cols[colName]
+			if !columnOk {
+				fmt.Fprintf(os.Stderr, "Unknown column entry. key name : %s\n", colName)
 				continue
 			}
 			if len(colTypes) > 1 {
