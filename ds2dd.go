@@ -12,6 +12,8 @@ import (
 	"go.mercari.io/datastore/clouddatastore"
 )
 
+const nestedKeyDelimiter = "__"
+
 type prop struct {
 	Repr []string `datastore:"property_representation"`
 }
@@ -41,7 +43,7 @@ func getPropertyTypes(ctx context.Context, client datastore.Client) propertyType
 		repr := props[i].Repr
 
 		tableName := k.ParentKey().Name()
-		colName := strings.Replace(k.Name(), ".", "_", -1)
+		colName := strings.Replace(k.Name(), ".", nestedKeyDelimiter, -1)
 
 		if properties[tableName] == nil {
 			properties[tableName] = make(map[string][]string)
